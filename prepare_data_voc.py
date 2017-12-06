@@ -218,8 +218,8 @@ def data_make():
                     best_box = np.array(iou_list).argmax()
                     # print(best_box)
 
-                    # if image_lable[box_cellpos[0], box_cellpos[1], best_box, 0] == 1:
-                    #     print(jpeg_filename, image_lable[box_cellpos[0], box_cellpos[1], best_box])
+                    if image_lable[box_cellpos[0], box_cellpos[1], best_box, 0] == 1:
+                        print(jpeg_filename, image_lable[box_cellpos[0], box_cellpos[1], best_box])
                     image_lable[box_cellpos[0], box_cellpos[1], best_box] = obj_lab
                     # print(image_lable[box_cellpos[0], box_cellpos[1], best_box, 0])
 
@@ -233,7 +233,7 @@ def data_make():
 
 
 
-# data_convert(cfg.CLASSES)
+data_convert(cfg.CLASSES)
 # image_show()
 data_make()
 

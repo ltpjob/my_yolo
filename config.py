@@ -8,7 +8,7 @@ Annotations_dir = root_dir + "Annotations/"
 CONVERT_DATA_dir = './data'
 TRAIN_DATA_DIR = "./train_data"
 
-CLASSES = ['car']
+CLASSES = ['car', 'person']
 
 CLASSES_COUNT = len(CLASSES)
 
@@ -25,6 +25,7 @@ ALPHA = 0.1
 DISP_CONSOLE = False
 
 OBJECT_SCALE = 1.0
-NOOBJECT_SCALE = 1.0
-CLASS_SCALE = 2.0
+NOOBJECT_SCALE = 0.5
+CLASS_SCALE = 1.0
 COORD_SCALE = 5.0
+

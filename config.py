@@ -7,16 +7,21 @@ Annotations_dir = root_dir + "Annotations/"
 
 CONVERT_DATA_dir = './data'
 TRAIN_DATA_DIR = "./train_data"
+MODEL_SAVE_DIR = "./model_save"
 
-CLASSES = ['car', 'person']
+CLASSES = ['car', 'dog']
 
 CLASSES_COUNT = len(CLASSES)
+
+MAX_TRUEBOXS = 20
 
 IMAGE_SIZE = 416
 
 CELL_SIZE = 13
 
-ANCHOR_BOXES = [(200, 140), (66, 266)]
+# ANCHOR_BOXES = [(200, 140), (66, 266)]
+
+ANCHOR_BOXES = [(6.25, 4.375), (2.0625, 8.3125)]
 
 BOXES_PER_CELL = len(ANCHOR_BOXES)
 
@@ -24,8 +29,20 @@ ALPHA = 0.1
 
 DISP_CONSOLE = False
 
-OBJECT_SCALE = 1.0
-NOOBJECT_SCALE = 0.5
-CLASS_SCALE = 1.0
-COORD_SCALE = 5.0
+# OBJECT_SCALE = 0
+# NOOBJECT_SCALE = 0
+# CLASS_SCALE = 0
+# COORD_SCALE = 1
 
+OBJECT_SCALE = 1
+NOOBJECT_SCALE = 0.5
+CLASS_SCALE = 1
+COORD_SCALE = 5
+
+IMAGE_DATA = "image_data.npy"
+LABEL_DATA = "label_data.npy"
+TRUEBOX_DATA = "truebox_data.npy"
+
+
+MODEL_FILE_NAME = "model_my_yolo.ckpt"
+RESUME = True # load model, resume from previous checkpoint?

@@ -159,7 +159,9 @@ def calc_iou(box1, box2):
 def data_make():
 
     image_data = []
-    lable_data = []
+    label_data = []
+    trueboxs_data = []
+    anchors = np.array(cfg.ANCHOR_BOXES)
     for parent, dirnames, filenames in os.walk(cfg.CONVERT_DATA_dir):
         for filename in filenames:
             # print("parent folder is:" + parent)
@@ -174,27 +176,39 @@ def data_make():
                 cell_width = int(pic_width/cfg.CELL_SIZE)
                 cell_height = int(pic_height/cfg.CELL_SIZE)
 
-                image_lable = np.zeros((cfg.CELL_SIZE, cfg.CELL_SIZE, cfg.BOXES_PER_CELL, 5 + cfg.CLASSES_COUNT),
+                image_label = np.zeros((cfg.CELL_SIZE, cfg.CELL_SIZE, cfg.BOXES_PER_CELL, 5 + cfg.CLASSES_COUNT),
                                        dtype=np.float32)
+                trueboxs = np.zeros((cfg.MAX_TRUEBOXS, 4))
 
                 objects = Data.getElementsByTagName("object")
-                for obj in objects:
+
+                for k, obj in enumerate(objects):
+                    if k >= cfg.MAX_TRUEBOXS:
+                        break
+
                     obj_xmin = int(obj.getElementsByTagName('xmin')[0].childNodes[0].nodeValue)
                     obj_xmax = int(obj.getElementsByTagName('xmax')[0].childNodes[0].nodeValue)
                     obj_ymin = int(obj.getElementsByTagName('ymin')[0].childNodes[0].nodeValue)
                     obj_ymax = int(obj.getElementsByTagName('ymax')[0].childNodes[0].nodeValue)
                     obj_name = obj.getElementsByTagName('name')[0].childNodes[0].nodeValue
-                    obj_center = (round(obj_xmin+(obj_xmax-obj_xmin)/2), round(obj_ymin+(obj_ymax-obj_ymin)/2))
-                    #计算obj中点在哪个cell里
+                    obj_center = (obj_xmin+(obj_xmax-obj_xmin)/2, obj_ymin+(obj_ymax-obj_ymin)/2)
+                    # 计算obj中点在哪个cell里
                     box_cellpos = (int(obj_center[0]*cfg.CELL_SIZE/pic_width),
                                int(obj_center[1]*cfg.CELL_SIZE/pic_height))
 
+                    box_bx = (obj_xmin+(obj_xmax-obj_xmin)/2)/pic_width
+                    box_by = (obj_ymin+(obj_ymax-obj_ymin)/2)/pic_height
+                    box_bw = ((obj_xmax-obj_xmin)/pic_width)
+                    box_bh = ((obj_ymax-obj_ymin)/pic_height)
+                    truebox = [box_bx, box_by, box_bw, box_bh]
+                    # print(truebox)
 
                     #确定位置
                     cellpos_bx = (obj_center[0] % cell_width)/cell_width
                     cellpos_by = (obj_center[1] % cell_height)/cell_height
                     cellpos_bw = ((obj_xmax-obj_xmin)/cell_width)
                     cellpos_bh = ((obj_ymax-obj_ymin)/cell_height)
+
                     obj_pos = [1, cellpos_bx, cellpos_by, cellpos_bw, cellpos_bh]
 
                     #确定类别
@@ -205,35 +219,50 @@ def data_make():
 
                     #找出iou最大的anchor box
                     iou_list = []
-                    for i in range(cfg.BOXES_PER_CELL):
-                        anchor_box = (obj_center[0] - cfg.ANCHOR_BOXES[i][0]/2,
-                                      obj_center[1] - cfg.ANCHOR_BOXES[i][1]/2,
-                                      obj_center[0] + cfg.ANCHOR_BOXES[i][0]/2,
-                                      obj_center[1] + cfg.ANCHOR_BOXES[i][1]/2,
-                                      )
-                        obj_box = (obj_xmin, obj_ymin, obj_xmax, obj_ymax)
-                        iou = calc_iou(anchor_box, obj_box)
+                    for anchor in anchors:
+                        box_maxes = obj_lab[3:5] / 2.
+                        box_mins = -box_maxes
+                        anchor_maxes = (anchor / 2.)
+                        anchor_mins = -anchor_maxes
+
+                        intersect_mins = np.maximum(box_mins, anchor_mins)
+                        intersect_maxes = np.minimum(box_maxes, anchor_maxes)
+                        intersect_wh = np.maximum(intersect_maxes - intersect_mins, 0.)
+                        intersect_area = intersect_wh[0] * intersect_wh[1]
+
+                        box_area = obj_lab[3] * obj_lab[4]
+                        anchor_area = anchor[0] * anchor[1]
+                        iou = intersect_area / (box_area + anchor_area - intersect_area)
                         iou_list.append(iou)
 
                     best_box = np.array(iou_list).argmax()
                     # print(best_box)
 
-                    if image_lable[box_cellpos[0], box_cellpos[1], best_box, 0] == 1:
-                        print(jpeg_filename, image_lable[box_cellpos[0], box_cellpos[1], best_box])
-                    image_lable[box_cellpos[0], box_cellpos[1], best_box] = obj_lab
-                    # print(image_lable[box_cellpos[0], box_cellpos[1], best_box, 0])
+                    if image_label[box_cellpos[0], box_cellpos[1], best_box, 0] == 1:
+                        print(jpeg_filename, image_label[box_cellpos[0], box_cellpos[1], best_box])
+                        continue
 
-                image = np.array(ndimage.imread(os.path.join(parent, jpeg_filename), flatten=False))
+                    obj_lab[3] = np.log(obj_lab[3] / anchors[best_box][0])
+                    obj_lab[4] = np.log(obj_lab[4] / anchors[best_box][1])
+                    image_label[box_cellpos[0], box_cellpos[1], best_box] = obj_lab
+                    trueboxs[k] = truebox
+                    # print(best_box, obj_lab)
+                    # print(image_label[box_cellpos[0], box_cellpos[1], best_box, 0])
+
+                image = np.array(cv2.imread(os.path.join(parent, jpeg_filename), cv2.IMREAD_COLOR))
+                # print(image.shape)
                 image_data.append(image)
-                lable_data.append(image_lable)
+                label_data.append(image_label)
+                trueboxs_data.append(trueboxs)
 
-    np.save(os.path.join(cfg.TRAIN_DATA_DIR, "image_data"), np.array(image_data))
-    np.save(os.path.join(cfg.TRAIN_DATA_DIR, "lable_data"), np.array(lable_data))
+    np.save(os.path.join(cfg.TRAIN_DATA_DIR, cfg.IMAGE_DATA), np.array(image_data))
+    np.save(os.path.join(cfg.TRAIN_DATA_DIR, cfg.LABEL_DATA), np.array(label_data))
+    np.save(os.path.join(cfg.TRAIN_DATA_DIR, cfg.TRUEBOX_DATA), np.array(trueboxs_data))
 
 
 
 
-data_convert(cfg.CLASSES)
+# data_convert(cfg.CLASSES)
 # image_show()
 data_make()
 

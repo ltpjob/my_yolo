@@ -163,7 +163,7 @@ def yolo_head(feats):
     return box_xy, box_wh, box_confidence, box_class_probs
 
 
-def yolo_loss(yolo_output, matching_true_boxes, true_boxes, rescore_confidence=False, print_loss=False):
+def yolo_loss(yolo_output, matching_true_boxes, true_boxes, rescore_confidence=False):
     # with tf.device('/cpu:0'):
     object_scale = 5
     no_object_scale = 1
@@ -246,20 +246,20 @@ def yolo_loss(yolo_output, matching_true_boxes, true_boxes, rescore_confidence=F
     coordinates_loss = (coordinates_scale * detectors_mask *
                         tf.square(matching_boxes - pred_boxes))
 
-    confidence_loss_sum = tf.reduce_sum(confidence_loss)
-    classification_loss_sum = tf.reduce_sum(classification_loss)
-    coordinates_loss_sum = tf.reduce_sum(coordinates_loss)
-    total_loss = 0.5 * (
-        confidence_loss_sum + classification_loss_sum + coordinates_loss_sum)
-    if print_loss:
-        total_loss = tf.Print(
-            total_loss, [
-                total_loss, confidence_loss_sum, classification_loss_sum,
-                coordinates_loss_sum
-            ],
-            message='yolo_loss, conf_loss, class_loss, box_coord_loss:')
+    confidence_loss_mean = tf.reduce_mean(tf.reduce_sum(confidence_loss, axis=[1, 2, 3, 4]))
+    classification_loss_mean = tf.reduce_mean(tf.reduce_sum(classification_loss, axis=[1, 2, 3, 4]))
+    coordinates_loss_mean = tf.reduce_mean(tf.reduce_sum(coordinates_loss, axis=[1, 2, 3, 4]))
+    total_loss = confidence_loss_mean + classification_loss_mean + coordinates_loss_mean
 
-    return total_loss, confidence_loss_sum, classification_loss_sum, coordinates_loss_sum
+    L2_regular = 0
+    for w in tl.layers.get_variables_with_name('W_conv2d', train_only=True, printable=False):  # [-3:]:
+        if w.name.find("conv2d_darknet_body") == -1:
+            print("yolo network l2:", w.name)
+            L2_regular += tf.contrib.layers.l2_regularizer(5e-4)(w)
+
+    total_loss += L2_regular
+
+    return total_loss, confidence_loss_mean, classification_loss_mean, coordinates_loss_mean
 
 
 def yolo_build_model(x, reuse, is_train=True):
@@ -305,6 +305,12 @@ def yolo_build_model(x, reuse, is_train=True):
         X = DarknetConv2D_BN_Leaky(X, 1024, (3, 3), strides=(1, 1), is_train=is_train, name='16')
         X = DarknetConv2D_BN_Leaky(X, 512, (1, 1), strides=(1, 1), is_train=is_train, name='17')
         X = DarknetConv2D_BN_Leaky(X, 1024, (3, 3), strides=(1, 1), is_train=is_train, name='18')
+
+        darknet19 = DarknetConv2D_BN_Leaky(X, 1000, (1, 1), strides=(1, 1), is_train=is_train, name='darknet_body')
+        avg_kernel_size = darknet19.outputs.shape[1]
+        darknet19 = MeanPool2d(darknet19, (avg_kernel_size, avg_kernel_size))
+        darknet19 = ReshapeLayer(darknet19, shape=(-1, cfg.IMAGE_NET_CLASSCOUNT), name='reshape_darknet19')
+
         X = DarknetConv2D_BN_Leaky(X, 1024, (3, 3), strides=(1, 1), is_train=is_train, name='19')
         X = DarknetConv2D_BN_Leaky(X, 1024, (3, 3), strides=(1, 1), is_train=is_train, name='20')
         path_2 = X
@@ -320,7 +326,7 @@ def yolo_build_model(x, reuse, is_train=True):
         X.print_layers()
         # X.print_params()
 
-    return X
+    return X, darknet19
 
 
 def predic(yolo_output):
@@ -356,7 +362,7 @@ def main():
     sess = tf.InteractiveSession()
 
     epoch_start = 1
-    learning_rate = 0.0000001
+    learning_rate = 0.001
 
     images_ph = tf.placeholder(tf.float32, shape=[None, cfg.IMAGE_SIZE, cfg.IMAGE_SIZE, 3], name='image_data')
     matching_true_boxes = tf.placeholder(
@@ -365,18 +371,11 @@ def main():
     true_boxes = tf.placeholder(
         tf.float32, shape=[None, cfg.MAX_TRUEBOXS, 4], name='true_boxes')
 
-    yolo_network_train = yolo_build_model(images_ph, False, True)
-    yolo_network_test = yolo_build_model(images_ph, True, False)
+    yolo_network_train, darknet19_train = yolo_build_model(images_ph, False, True)
+    yolo_network_test, darknet19_test = yolo_build_model(images_ph, True, False)
     yolo_loss_train, _, _, _ = yolo_loss(yolo_network_train.outputs, matching_true_boxes, true_boxes)
-    yolo_loss_test, confidence_loss_sum_test, classification_loss_sum_test, coordinates_loss_sum_test= \
+    yolo_loss_test, confidence_loss_test, classification_loss_test, coordinates_loss_test= \
         yolo_loss(yolo_network_test.outputs, matching_true_boxes, true_boxes)
-
-    L2_regular = 0
-    for w in tl.layers.get_variables_with_name('W_conv2d', train_only=True, printable=True):  # [-3:]:
-        L2_regular += tf.contrib.layers.l2_regularizer(5e-4)(w)
-
-    yolo_loss_train += L2_regular
-    yolo_loss_test += L2_regular
 
     train_op = tf.train.AdamOptimizer(learning_rate).minimize(yolo_loss_train, var_list=yolo_network_train.all_params)
 
@@ -386,9 +385,9 @@ def main():
     yolo_network_train.print_layers()
 
     tf.summary.scalar('total_loss', yolo_loss_test)
-    tf.summary.scalar('confidence_loss_sum', confidence_loss_sum_test)
-    tf.summary.scalar('classification_loss_sum', classification_loss_sum_test)
-    tf.summary.scalar('coordinates_loss_sum', coordinates_loss_sum_test)
+    tf.summary.scalar('confidence_loss', confidence_loss_test)
+    tf.summary.scalar('classification_loss', classification_loss_test)
+    tf.summary.scalar('coordinates_loss', coordinates_loss_test)
     merged_tb = tf.summary.merge_all()
     train_writer = tf.summary.FileWriter(cfg.LOGS_TRAIN, sess.graph)
     test_writer = tf.summary.FileWriter(cfg.LOGS_TEST, sess.graph)
@@ -420,29 +419,29 @@ def main():
     data_size = 40
     start = 300
     end = start+data_size
-
-    result_train = sess.run([yolo_network_test.outputs],
-                                        feed_dict={images_ph: train_data[start:end],
-                                                   true_boxes: train_trueboxs[start:end],
-                                                   matching_true_boxes: train_label[start:end]})
-    result_train = result_train[0]
-
-    result_test = sess.run([yolo_network_test.outputs],
-                                      feed_dict={images_ph: test_data[start:end],
-                                                 true_boxes: test_trueboxs[start:end],
-                                                 matching_true_boxes: test_label[start:end]})
-    result_test = result_test[0]
-
-    for i in range(start, end):
-        scores, boxes, classes = predic(result_train[i-start])
-        print(scores, boxes, classes)
-        image_label_show(train_data[i], scores, boxes, classes, name='train'+str(i), delay=1)
-
-        scores, boxes, classes = predic(result_test[i-start])
-        print(scores, boxes, classes)
-        image_label_show(test_data[i], scores, boxes, classes, name='test'+str(i), delay=1)
-
-    cv2.waitKey()
+    #
+    # result_train = sess.run([yolo_network_test.outputs],
+    #                                     feed_dict={images_ph: train_data[start:end],
+    #                                                true_boxes: train_trueboxs[start:end],
+    #                                                matching_true_boxes: train_label[start:end]})
+    # result_train = result_train[0]
+    #
+    # result_test = sess.run([yolo_network_test.outputs],
+    #                                   feed_dict={images_ph: test_data[start:end],
+    #                                              true_boxes: test_trueboxs[start:end],
+    #                                              matching_true_boxes: test_label[start:end]})
+    # result_test = result_test[0]
+    #
+    # for i in range(start, end):
+    #     scores, boxes, classes = predic(result_train[i-start])
+    #     print(scores, boxes, classes)
+    #     image_label_show(train_data[i], scores, boxes, classes, name='train'+str(i), delay=1)
+    #
+    #     scores, boxes, classes = predic(result_test[i-start])
+    #     print(scores, boxes, classes)
+    #     image_label_show(test_data[i], scores, boxes, classes, name='test'+str(i), delay=1)
+    #
+    # cv2.waitKey()
 
     print('train start!!!!!', time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time())))
     for epoch in range(epoch_start, 2000):
@@ -465,28 +464,28 @@ def main():
             save_path = saver.save(sess, os.path.join(cfg.MODEL_SAVE_DIR, cfg.MODEL_FILE_NAME), global_step=epoch)
 
         train_tb, total_loss_train, train_confidence_loss, train_classification_loss, train_coordinates_loss, result_train = \
-            sess.run([merged_tb, yolo_loss_test, confidence_loss_sum_test,
-                      classification_loss_sum_test, coordinates_loss_sum_test,
+            sess.run([merged_tb, yolo_loss_test, confidence_loss_test,
+                      classification_loss_test, coordinates_loss_test,
                       yolo_network_test.outputs],
                      feed_dict={images_ph: train_data[start:end],
                                 true_boxes: train_trueboxs[start:end],
                                 matching_true_boxes: train_label[start:end]})
-        print("epoch:", epoch, "train_total_loss:", total_loss_train/data_size,
-              "train_conf_loss:", train_confidence_loss/data_size,
-              "train_class_loss:", train_classification_loss/data_size,
-              "train_coor_loss:", train_coordinates_loss/data_size)
+        print("epoch:", epoch, "train_total_loss:", total_loss_train,
+              "train_conf_loss:", train_confidence_loss,
+              "train_class_loss:", train_classification_loss,
+              "train_coor_loss:", train_coordinates_loss)
 
         test_tb, test_total_loss, test_confidence_loss, test_classification_loss, test_coordinates_loss, result_test = \
-            sess.run([merged_tb, yolo_loss_test, confidence_loss_sum_test,
-                      classification_loss_sum_test, coordinates_loss_sum_test,
+            sess.run([merged_tb, yolo_loss_test, confidence_loss_test,
+                      classification_loss_test, coordinates_loss_test,
                       yolo_network_test.outputs],
                      feed_dict={images_ph: test_data[start:end],
                                 true_boxes: test_trueboxs[start:end],
                                 matching_true_boxes: test_label[start:end]})
-        print("epoch:", epoch, "test_total_loss :", test_total_loss/data_size,
-              "test_conf_loss :", test_confidence_loss/data_size,
-              "tset_class_loss :", test_classification_loss/data_size,
-              "test_coor_loss :", test_coordinates_loss/data_size)
+        print("epoch:", epoch, "test_total_loss :", test_total_loss,
+              "test_conf_loss :", test_confidence_loss,
+              "tset_class_loss :", test_classification_loss,
+              "test_coor_loss :", test_coordinates_loss)
 
         train_writer.add_summary(train_tb, epoch)
         test_writer.add_summary(test_tb, epoch)

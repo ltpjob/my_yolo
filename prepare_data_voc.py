@@ -34,13 +34,13 @@ def data_convert(class_filter):
                     flag_save += 1
 
                 obj.getElementsByTagName('xmin')[0].childNodes[0].nodeValue = \
-                    int(round(int(obj.getElementsByTagName('xmin')[0].childNodes[0].nodeValue)/pic_wscale))
+                    int(round(float(obj.getElementsByTagName('xmin')[0].childNodes[0].nodeValue)/pic_wscale))
                 obj.getElementsByTagName('xmax')[0].childNodes[0].nodeValue = \
-                    int(round(int(obj.getElementsByTagName('xmax')[0].childNodes[0].nodeValue)/pic_wscale))
+                    int(round(float(obj.getElementsByTagName('xmax')[0].childNodes[0].nodeValue)/pic_wscale))
                 obj.getElementsByTagName('ymin')[0].childNodes[0].nodeValue = \
-                    int(round(int(obj.getElementsByTagName('ymin')[0].childNodes[0].nodeValue)/pic_hscale))
+                    int(round(float(obj.getElementsByTagName('ymin')[0].childNodes[0].nodeValue)/pic_hscale))
                 obj.getElementsByTagName('ymax')[0].childNodes[0].nodeValue = \
-                    int(round(int(obj.getElementsByTagName('ymax')[0].childNodes[0].nodeValue)/pic_hscale))
+                    int(round(float(obj.getElementsByTagName('ymax')[0].childNodes[0].nodeValue)/pic_hscale))
 
             if flag_save == 0:
                 continue
@@ -156,6 +156,24 @@ def calc_iou(box1, box2):
 
     return iou
 
+
+def class_enmu():
+    class_dic = {}
+    for parent, dirnames, filenames in os.walk(cfg.Annotations_dir):
+        for filename in filenames:
+            # print("parent folder is:" + parent)
+            # print("filename with full path:" + os.path.join(parent, filename))
+            DOMTree = xml.dom.minidom.parse(os.path.join(parent, filename))
+            Data = DOMTree.documentElement
+            objects = Data.getElementsByTagName("object")
+            for obj in objects:
+                obj_name = obj.getElementsByTagName('name')[0].childNodes[0].nodeValue
+                class_dic[obj_name] = obj_name
+
+    print(class_dic.keys())
+
+
+
 def data_make():
 
     image_data = []
@@ -184,6 +202,7 @@ def data_make():
 
                 for k, obj in enumerate(objects):
                     if k >= cfg.MAX_TRUEBOXS:
+                        print("!!!!!!!!!", k)
                         break
 
                     obj_xmin = int(obj.getElementsByTagName('xmin')[0].childNodes[0].nodeValue)
@@ -238,9 +257,22 @@ def data_make():
                     best_box = np.array(iou_list).argmax()
                     # print(best_box)
 
+                    # if image_label[box_cellpos[0], box_cellpos[1], best_box, 0] == 1:
+                    #     # print(jpeg_filename, best_box, image_label[box_cellpos[0], box_cellpos[1], best_box])
+                    #     print(jpeg_filename, best_box)
+                    #     continue
+
                     if image_label[box_cellpos[0], box_cellpos[1], best_box, 0] == 1:
-                        print(jpeg_filename, image_label[box_cellpos[0], box_cellpos[1], best_box])
-                        continue
+                        if best_box < cfg.BOXES_PER_CELL-1:
+                            best_box = best_box+1
+                            if image_label[box_cellpos[0], box_cellpos[1], best_box, 0] == 1:
+                                # print(jpeg_filename, best_box, image_label[box_cellpos[0], box_cellpos[1], best_box])
+                                print(jpeg_filename, best_box)
+                                continue
+                        else:
+                            # print(jpeg_filename, best_box, image_label[box_cellpos[0], box_cellpos[1], best_box])
+                            print(jpeg_filename, best_box)
+                            continue
 
                     obj_lab[3] = np.log(obj_lab[3] / anchors[best_box][0])
                     obj_lab[4] = np.log(obj_lab[4] / anchors[best_box][1])
@@ -255,13 +287,14 @@ def data_make():
                 label_data.append(image_label)
                 trueboxs_data.append(trueboxs)
 
-    np.save(os.path.join(cfg.TRAIN_DATA_DIR, cfg.IMAGE_DATA), np.array(image_data))
-    np.save(os.path.join(cfg.TRAIN_DATA_DIR, cfg.LABEL_DATA), np.array(label_data))
-    np.save(os.path.join(cfg.TRAIN_DATA_DIR, cfg.TRUEBOX_DATA), np.array(trueboxs_data))
+    # np.save(os.path.join(cfg.TRAIN_DATA_DIR, cfg.IMAGE_DATA), np.array(image_data))
+    # np.save(os.path.join(cfg.TRAIN_DATA_DIR, cfg.LABEL_DATA), np.array(label_data))
+    # np.save(os.path.join(cfg.TRAIN_DATA_DIR, cfg.TRUEBOX_DATA), np.array(trueboxs_data))
 
 
 
-
+# class_enmu()
+# exit(0)
 # data_convert(cfg.CLASSES)
 # image_show()
 data_make()

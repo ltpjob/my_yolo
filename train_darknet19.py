@@ -92,7 +92,7 @@ def main():
 
     is_training = tf.placeholder(tf.bool, name='is_training')
 
-    imagenet_dic= get_train_path_set()
+    imagenet_dic = get_train_path_set()
     # cons_filenames = tf.constant(imagenet_dic["train_filename"])
     # cons_labels = tf.constant(imagenet_dic["train_label"])
 
@@ -140,7 +140,7 @@ def main():
                 sess.run(train_darknet19_op, feed_dict={is_training: True})
                 count += 1
                 # print(count)
-                if count == imagenet_dic["train_size"] / batch_size:
+                if count == int(imagenet_dic["train_size"] / batch_size):
                     count = 0
                     break
             except tf.errors.OutOfRangeError:
@@ -163,55 +163,12 @@ def main():
                 loss_all += loss
                 acc_all += accuracy
                 count += 1
-                if count == imagenet_dic["test_size"] / batch_size:
+                if count == int(imagenet_dic["test_size"] / batch_size):
                     break
             except tf.errors.OutOfRangeError:
                 break
 
         print(loss_all / count, acc_all / count)
-
-
-    # count = 0
-    # with tf.train.MonitoredTrainingSession() as sess:
-    #     while not sess.should_stop():
-    #         sess.run(train_darknet19_op, feed_dict={is_training: True})
-    #         count += 1
-    #         print(count)
-    #         if count == whole_data_size/batch_size:
-    #             epoch_start += 1
-    #             count = 0
-    #             print("epoch:", epoch_start, time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time())))
-    #             saver.save(sess, os.path.join(cfg.DARKNET19_MODEL_SAVE_DIR, cfg.MODEL_FILE_NAME), global_step=epoch_start)
-
-
-    # for epoch in range(epoch_start, 2000):
-    #     file_count = 0
-    #     oldtime = datetime.datetime.now()
-    #     while True:
-    #         imgdata_path = os.path.join(cfg.IMAGENET_TRAINDATA,
-    #                                     'data_' + str(cfg.IMAGENET_IMAGE_SIZE) + '_' + str(file_count) + '.npy')
-    #         imglabel_path = os.path.join(cfg.IMAGENET_TRAINDATA,
-    #                                      'label_' + str(cfg.IMAGENET_IMAGE_SIZE) + '_' + str(file_count) + '.npy')
-    #         if os.path.isfile(imgdata_path) is True and os.path.isfile(imglabel_path) is True:
-    #             in_image_data = np.load(imgdata_path)
-    #             in_label_data = np.load(imglabel_path)
-    #
-    #             x_index = np.arange(in_image_data.shape[0])
-    #
-    #             for x_index_a in minibatches_index(x_index, 12, shuffle=True):
-    #                 sess.run([train_darknet19_op], feed_dict={images_ph: in_image_data[x_index_a],
-    #                                                           imagenet_label: in_label_data[x_index_a],
-    #                                                           is_training: True})
-    #             file_count += 1
-    #         else:
-    #             break
-    #
-    #     newtime = datetime.datetime.now()
-    #     print("epoch:", epoch, "time_cost:", (newtime - oldtime).seconds,
-    #           time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time())))
-    #     if epoch % 1 == 0 and epoch != 0:
-    #         saver = tf.train.Saver()
-    #         saver.save(sess, os.path.join(cfg.DARKNET19_MODEL_SAVE_DIR, cfg.MODEL_FILE_NAME), global_step=epoch)
 
 
 main()

@@ -5,7 +5,7 @@ import xml.dom.minidom
 from PIL import Image
 import cv2
 import numpy as np
-from scipy import ndimage
+# from scipy import ndimage
 
 
 
@@ -33,14 +33,19 @@ def data_convert(class_filter):
                 else:
                     flag_save += 1
 
-                obj.getElementsByTagName('xmin')[0].childNodes[0].nodeValue = \
-                    int(round(float(obj.getElementsByTagName('xmin')[0].childNodes[0].nodeValue)/pic_wscale))
-                obj.getElementsByTagName('xmax')[0].childNodes[0].nodeValue = \
-                    int(round(float(obj.getElementsByTagName('xmax')[0].childNodes[0].nodeValue)/pic_wscale))
-                obj.getElementsByTagName('ymin')[0].childNodes[0].nodeValue = \
-                    int(round(float(obj.getElementsByTagName('ymin')[0].childNodes[0].nodeValue)/pic_hscale))
-                obj.getElementsByTagName('ymax')[0].childNodes[0].nodeValue = \
-                    int(round(float(obj.getElementsByTagName('ymax')[0].childNodes[0].nodeValue)/pic_hscale))
+                for kkk, box in enumerate(obj.childNodes):
+                    if box.nodeName == 'bndbox':
+                        bndbox = box
+                        break
+
+                bndbox.getElementsByTagName('xmin')[0].childNodes[0].nodeValue = \
+                    int(round(float(bndbox.getElementsByTagName('xmin')[0].childNodes[0].nodeValue)/pic_wscale))
+                bndbox.getElementsByTagName('xmax')[0].childNodes[0].nodeValue = \
+                    int(round(float(bndbox.getElementsByTagName('xmax')[0].childNodes[0].nodeValue)/pic_wscale))
+                bndbox.getElementsByTagName('ymin')[0].childNodes[0].nodeValue = \
+                    int(round(float(bndbox.getElementsByTagName('ymin')[0].childNodes[0].nodeValue)/pic_hscale))
+                bndbox.getElementsByTagName('ymax')[0].childNodes[0].nodeValue = \
+                    int(round(float(bndbox.getElementsByTagName('ymax')[0].childNodes[0].nodeValue)/pic_hscale))
 
             if flag_save == 0:
                 continue
@@ -168,10 +173,24 @@ def class_enmu():
             objects = Data.getElementsByTagName("object")
             for obj in objects:
                 obj_name = obj.getElementsByTagName('name')[0].childNodes[0].nodeValue
-                class_dic[obj_name] = obj_name
+                if obj_name in class_dic:
+                    class_dic[obj_name] += 1
+                else:
+                    class_dic[obj_name] = 0
 
     print(class_dic.keys())
+    print(class_dic)
 
+
+def idx_print_name(idx):
+    count = 0
+    for parent, dirnames, filenames in os.walk(cfg.Annotations_dir):
+        for filename in filenames:
+            if idx == count:
+                print(filename)
+                break
+            else:
+                count += 1
 
 
 def data_make():
@@ -202,13 +221,22 @@ def data_make():
 
                 for k, obj in enumerate(objects):
                     if k >= cfg.MAX_TRUEBOXS:
-                        print("!!!!!!!!!", k)
+                        print("!!!!!!!!!", k, filename)
                         break
 
-                    obj_xmin = int(obj.getElementsByTagName('xmin')[0].childNodes[0].nodeValue)
-                    obj_xmax = int(obj.getElementsByTagName('xmax')[0].childNodes[0].nodeValue)
-                    obj_ymin = int(obj.getElementsByTagName('ymin')[0].childNodes[0].nodeValue)
-                    obj_ymax = int(obj.getElementsByTagName('ymax')[0].childNodes[0].nodeValue)
+                    if filename == '2007_000423.xml':
+                        print(1111111)
+
+                    for kkk, box in enumerate(obj.childNodes):
+                        if box.nodeName == 'bndbox':
+                            bndbox = box
+                            break
+
+
+                    obj_xmin = int(bndbox.getElementsByTagName('xmin')[0].childNodes[0].nodeValue)
+                    obj_xmax = int(bndbox.getElementsByTagName('xmax')[0].childNodes[0].nodeValue)
+                    obj_ymin = int(bndbox.getElementsByTagName('ymin')[0].childNodes[0].nodeValue)
+                    obj_ymax = int(bndbox.getElementsByTagName('ymax')[0].childNodes[0].nodeValue)
                     obj_name = obj.getElementsByTagName('name')[0].childNodes[0].nodeValue
                     obj_center = (obj_xmin+(obj_xmax-obj_xmin)/2, obj_ymin+(obj_ymax-obj_ymin)/2)
                     # 计算obj中点在哪个cell里
@@ -287,15 +315,15 @@ def data_make():
                 label_data.append(image_label)
                 trueboxs_data.append(trueboxs)
 
-    # np.save(os.path.join(cfg.TRAIN_DATA_DIR, cfg.IMAGE_DATA), np.array(image_data))
-    # np.save(os.path.join(cfg.TRAIN_DATA_DIR, cfg.LABEL_DATA), np.array(label_data))
-    # np.save(os.path.join(cfg.TRAIN_DATA_DIR, cfg.TRUEBOX_DATA), np.array(trueboxs_data))
+    np.save(os.path.join(cfg.TRAIN_DATA_DIR, cfg.IMAGE_DATA), np.array(image_data))
+    np.save(os.path.join(cfg.TRAIN_DATA_DIR, cfg.LABEL_DATA), np.array(label_data))
+    np.save(os.path.join(cfg.TRAIN_DATA_DIR, cfg.TRUEBOX_DATA), np.array(trueboxs_data))
 
 
-
+# idx_print_name(15443)
 # class_enmu()
 # exit(0)
-# data_convert(cfg.CLASSES)
+data_convert(cfg.CLASSES)
 # image_show()
 data_make()
 

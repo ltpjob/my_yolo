@@ -252,9 +252,9 @@ def yolo_loss(yolo_output, matching_true_boxes, true_boxes, rescore_confidence=F
     total_loss = confidence_loss_mean + classification_loss_mean + coordinates_loss_mean
 
     L2_regular = 0
-    for w in tl.layers.get_variables_with_name('W_conv2d', train_only=True, printable=False):  # [-3:]:
+    for w in tl.layers.get_variables_with_name('W_conv2d', train_only=True, printable=True):  # [-3:]:
         if w.name.find("conv2d_darknet_body") == -1:
-            print("yolo network l2:", w.name)
+            print("yolo network L2:", w.name)
             L2_regular += tf.contrib.layers.l2_regularizer(5e-4)(w)
 
     total_loss += L2_regular
@@ -266,6 +266,8 @@ def yolo_build_model(x, reuse, is_train=True):
 
     with tf.variable_scope("model", reuse=reuse):
         tl.layers.set_name_reuse(reuse)
+
+        tl.ops.disable_print()
 
         X_input = tl.layers.InputLayer(x, name='input')
         #416to208
@@ -306,10 +308,11 @@ def yolo_build_model(x, reuse, is_train=True):
         X = DarknetConv2D_BN_Leaky(X, 512, (1, 1), strides=(1, 1), is_train=is_train, name='17')
         X = DarknetConv2D_BN_Leaky(X, 1024, (3, 3), strides=(1, 1), is_train=is_train, name='18')
 
-        darknet19 = DarknetConv2D_BN_Leaky(X, 1000, (1, 1), strides=(1, 1), is_train=is_train, name='darknet_body')
-        avg_kernel_size = darknet19.outputs.shape[1]
+        darknet19 = DarknetConv2D_BN_Leaky(X, cfg.IMAGENET_CLASSCOUNT, (1, 1),
+                                           strides=(1, 1), is_train=is_train, name='darknet_body')
+        avg_kernel_size = cfg.IMAGENET_AVGPOOLSIZE
         darknet19 = MeanPool2d(darknet19, (avg_kernel_size, avg_kernel_size))
-        darknet19 = ReshapeLayer(darknet19, shape=(-1, cfg.IMAGE_NET_CLASSCOUNT), name='reshape_darknet19')
+        darknet19 = ReshapeLayer(darknet19, shape=(-1, cfg.IMAGENET_CLASSCOUNT), name='reshape_darknet19')
 
         X = DarknetConv2D_BN_Leaky(X, 1024, (3, 3), strides=(1, 1), is_train=is_train, name='19')
         X = DarknetConv2D_BN_Leaky(X, 1024, (3, 3), strides=(1, 1), is_train=is_train, name='20')
@@ -323,7 +326,9 @@ def yolo_build_model(x, reuse, is_train=True):
         X = DarknetConv2D_BN_Leaky(X, lab_filters, (1, 1), strides=(1, 1), is_train=is_train, name='22')
         X = ReshapeLayer(X, shape=(-1, cfg.CELL_SIZE, cfg.CELL_SIZE, cfg.BOXES_PER_CELL, 5 + cfg.CLASSES_COUNT), name='reshape')
 
-        X.print_layers()
+        tl.ops.enable_print()
+
+        # X.print_layers()
         # X.print_params()
 
     return X, darknet19
@@ -358,13 +363,46 @@ def image_label_show(image, scores, boxes, classes, name='image', delay=500):
     cv2.waitKey(delay)
 
 
+def darknent19_interface(imagenet_label, darknet19):
+    L2_regular = 0
+    for w in tl.layers.get_variables_with_name('W_conv2d', train_only=True, printable=True):  # [-3:]:
+        print("yolo network L2:", w.name)
+        L2_regular += tf.contrib.layers.l2_regularizer(5e-4)(w)
+        if w.name.find("conv2d_darknet_body") != -1:
+            break
+
+    y = darknet19.outputs
+    ce = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=imagenet_label, logits=y))
+    ce += L2_regular
+
+    correct_prediction = tf.equal(tf.cast(tf.argmax(y, 1), tf.int32), imagenet_label)
+    acc = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
+
+    return ce, acc
+
+
+def train_darknet19(images_ph, darknet19_train, darknet19_test):
+
+    learning_rate = 0.001
+
+    imagenet_label = tf.placeholder(tf.int32, shape=[None], name='imagenet_label')
+    train_loss, train_acc = darknent19_interface(imagenet_label, darknet19_train)
+    test_loss, test_acc = darknent19_interface(imagenet_label, darknet19_test)
+
+    train_op = tf.train.AdamOptimizer(learning_rate).minimize(train_loss, var_list=yolo_network_train.all_params)
+
+    tf.summary.scalar('darknet19_total_loss', test_loss)
+    tf.summary.scalar('darknet19_acc', test_acc)
+
+
+
 def main():
     sess = tf.InteractiveSession()
 
     epoch_start = 1
-    learning_rate = 0.001
+    learning_rate = 0.1
 
-    images_ph = tf.placeholder(tf.float32, shape=[None, cfg.IMAGE_SIZE, cfg.IMAGE_SIZE, 3], name='image_data')
+    images_ph = tf.placeholder(tf.float32, shape=[None, None, None, 3], name='image_data')
     matching_true_boxes = tf.placeholder(
         tf.float32, shape=[None, cfg.CELL_SIZE, cfg.CELL_SIZE, cfg.BOXES_PER_CELL, 5 + cfg.CLASSES_COUNT],
         name='matching_true_boxes')
@@ -379,15 +417,23 @@ def main():
 
     train_op = tf.train.AdamOptimizer(learning_rate).minimize(yolo_loss_train, var_list=yolo_network_train.all_params)
 
+    #darknet19
+    imagenet_label = tf.placeholder(tf.int32, shape=[None], name='imagenet_label')
+    train_darknet19_loss, train_darknet19_acc = darknent19_interface(imagenet_label, darknet19_train)
+    test_darknet19_loss, test_darknet19_acc = darknent19_interface(imagenet_label, darknet19_test)
+    train_darknet19_op = tf.train.AdamOptimizer(learning_rate).minimize(train_darknet19_loss, var_list=darknet19_train.all_params)
+
     tl.layers.initialize_global_variables(sess)
 
     yolo_network_train.print_params(False)
     yolo_network_train.print_layers()
 
+
     tf.summary.scalar('total_loss', yolo_loss_test)
     tf.summary.scalar('confidence_loss', confidence_loss_test)
     tf.summary.scalar('classification_loss', classification_loss_test)
     tf.summary.scalar('coordinates_loss', coordinates_loss_test)
+    tf.summary.scalar('learning_rate', learning_rate)
     merged_tb = tf.summary.merge_all()
     train_writer = tf.summary.FileWriter(cfg.LOGS_TRAIN, sess.graph)
     test_writer = tf.summary.FileWriter(cfg.LOGS_TEST, sess.graph)
@@ -400,6 +446,38 @@ def main():
             epoch_start = epoch_start+int(model_file.split('-')[1])
             print(model_file)
             saver.restore(sess, model_file)
+
+    if cfg.TRAIN_DARKNET19 == True:
+        print('train start!!!!!', time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time())))
+        for epoch in range(epoch_start, 2000):
+            file_count = 0
+            oldtime = datetime.datetime.now()
+            while True:
+                imgdata_path = os.path.join(cfg.IMAGENET_TRAINDATA,
+                                 'data_' + str(cfg.IMAGENET_IMAGE_SIZE) + '_' + str(file_count) + '.npy')
+                imglabel_path = os.path.join(cfg.IMAGENET_TRAINDATA,
+                                  'label_' + str(cfg.IMAGENET_IMAGE_SIZE) + '_' + str(file_count) + '.npy')
+                if os.path.isfile(imgdata_path) is True and os.path.isfile(imglabel_path) is True:
+                    in_image_data = np.load(imgdata_path)
+                    in_label_data = np.load(imglabel_path)
+
+                    x_index = np.arange(in_image_data.shape[0])
+                    y_index = np.arange(in_label_data.shape[0])
+
+                    for x_index_a, y_index_a in tl.iterate.minibatches(
+                            x_index, y_index, 12, shuffle=True):
+                        sess.run([train_darknet19_op], feed_dict={images_ph: in_image_data[x_index_a],
+                                                        imagenet_label: in_label_data[x_index_a]})
+                    file_count += 1
+                else:
+                    break
+
+            newtime = datetime.datetime.now()
+            print("epoch:", epoch, "time_cost:", (newtime - oldtime).seconds,
+                  time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time())))
+            if epoch % 1 == 0 and epoch != 0:
+                saver = tf.train.Saver()
+                saver.save(sess, os.path.join(cfg.MODEL_SAVE_DIR, cfg.MODEL_FILE_NAME), global_step=epoch)
 
     image_data = np.load(os.path.join(cfg.TRAIN_DATA_DIR, cfg.IMAGE_DATA))
     label_data = np.load(os.path.join(cfg.TRAIN_DATA_DIR, cfg.LABEL_DATA))
@@ -417,7 +495,7 @@ def main():
     test_trueboxs = trueboxs_data[split:]
 
     data_size = 40
-    start = 300
+    start = 0
     end = start+data_size
     #
     # result_train = sess.run([yolo_network_test.outputs],

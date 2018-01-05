@@ -1,5 +1,5 @@
 from keras import backend as K
-from keras.layers import Input, Add, Dense, Activation, LeakyReLU, BatchNormalization, Reshape, Conv2D, ZeroPadding2D, MaxPooling2D, Flatten
+from keras.layers import Input, Add, Dense, Activation, LeakyReLU, BatchNormalization, Reshape, Conv2D, concatenate, MaxPooling2D, Flatten
 from keras.models import Model, load_model
 import trunk.config as cfg
 import numpy as np
@@ -309,6 +309,10 @@ def yolo_build_model(data_input_shape):
     X = DarknetConv2D_BN_Leaky(X, 1024, (3, 3), strides=(1, 1))
     X = DarknetConv2D_BN_Leaky(X, 512, (1, 1), strides=(1, 1))
     X = DarknetConv2D_BN_Leaky(X, 1024, (3, 3), strides=(1, 1))
+
+    darknet = Conv2D(1000, (1, 1), activation="softmax")(X)
+    print(darknet.shape)
+
     X = DarknetConv2D_BN_Leaky(X, 1024, (3, 3), strides=(1, 1))
     X = DarknetConv2D_BN_Leaky(X, 1024, (3, 3), strides=(1, 1))
     lab_filters = cfg.BOXES_PER_CELL*(5 + cfg.CLASSES_COUNT)
@@ -328,7 +332,6 @@ def main():
     label_data = np.load(os.path.join(cfg.TRAIN_DATA_DIR, cfg.LABEL_DATA))
     trueboxs_data = np.load(os.path.join(cfg.TRAIN_DATA_DIR, cfg.TRUEBOX_DATA))
 
-    K.max
 
     split = int(image_data.shape[0] * 0.7)
     print(split, image_data.shape[0])

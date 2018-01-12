@@ -43,7 +43,7 @@ DISP_CONSOLE = False
 # COORD_SCALE = 1
 
 OBJECT_SCALE = 1
-NOOBJECT_SCALE = 0.5
+NOOBJECT_SCALE = 1
 CLASS_SCALE = 1
 COORD_SCALE = 5
 
@@ -56,14 +56,15 @@ YOLOV2_MODEL_FILE_NAME = "model_my_yolo.ckpt"
 DARKNET19_MODEL_FILE_NAME = "model_my_darknet19.ckpt"
 RESUME = True # load model, resume from previous checkpoint?
 TRAIN_DARKNET19 = True
-RESUME_DARKNET19_CORE = False
+RESUME_DARKNET19_CORE = True
 RESUME_DARKNET19_TRAIN = True
 RESUME_YOLOV2_TRAIN = True
 
-LOGS_TRAIN = "logs/train_my_yolo_7"
-LOGS_TEST = "logs/test_my_yolo_7"
+LOGS_TRAIN = "logs/train_my_yolo_8"
+LOGS_TEST = "logs/test_my_yolo_8"
 
 
+IMAGENET_DATA_DIC = os.path.join(TRAIN_DATA_DIR, "imagenet_data_dic.pkl")
 IMAGENET_PATH = "E:/image_net"
 IMAGENET_TRAINIMAGE_TAR = os.path.join(IMAGENET_PATH, "train_image_tar")
 IMAGENET_TRAINIMAGE = os.path.join(IMAGENET_PATH, "train_image")

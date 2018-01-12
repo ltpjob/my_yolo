@@ -9,6 +9,7 @@ import trunk.yolov2_body as yb
 import trunk.yolov2_loss as yl
 import random
 import copy
+import pickle
 
 def minibatches_index(inputs=None, batch_size=None, shuffle=False):
 
@@ -26,75 +27,105 @@ def minibatches_index(inputs=None, batch_size=None, shuffle=False):
 def _parse_function(filename, label):
     image_string = tf.read_file(filename)
     image_decoded = tf.image.decode_jpeg(image_string, 3)
-    image_resized = tf.image.resize_images(image_decoded, [224, 224])
+    image_resized = tf.image.resize_images(image_decoded, [cfg.IMAGENET_IMAGE_SIZE, cfg.IMAGENET_IMAGE_SIZE])/255.0
     return image_resized, label
 
 
-def get_train_path_set(split_ratio=0.9):
-    class_name, class_index = cfg.pickup_dic()
+def class_stat(cls):
 
-    image_filenames = []
-    image_label = []
-    for key, value in class_name.items():
-        imagedir = os.path.join(cfg.IMAGENET_TRAINIMAGE, key)
-        for parent, dirnames, filenames in os.walk(imagedir):
-            for filename in filenames:
-                headname, expname = os.path.splitext(filename)
-                expname = expname.lower()
-                image_id = headname.split('_')[0]
-                full_path = os.path.join(imagedir, filename)
+    cls_dic = {}
+    for i in range(len(cls)):
+        if cls[i] not in cls_dic:
+            cls_dic[cls[i]] = 0
+        else:
+            cls_dic[cls[i]] += 1
 
-                if expname == '.jpeg' and image_id == key:
-                    image_filenames.append(full_path)
-                    image_label.append(class_index[image_id])
-                    print(full_path, len(image_filenames), len(image_label))
+    print('len dic:', len(cls_dic))
+    print(cls_dic)
 
-    roll_seed = random.randint(10, 100)
-    random.seed(roll_seed)
-    image_filenames_shuffle = copy.copy(image_filenames)
-    random.shuffle(image_filenames_shuffle)
-    random.seed(roll_seed)
-    image_label_shuffle = copy.copy(image_label)
-    random.shuffle(image_label_shuffle)
 
+def check_filename_class(class_index, image_filenames, image_label):
     for i in range(len(image_filenames)):
-        filename = os.path.split(image_filenames_shuffle[i])[1]
+        filename = os.path.split(image_filenames[i])[1]
         headname, _ = os.path.splitext(filename)
         image_id = headname.split('_')[0]
-        assert class_index[image_id] == image_label_shuffle[i]
+        # print(class_index[image_id], image_label[i])
+        assert class_index[image_id] == image_label[i]
 
-    split = int(len(image_filenames_shuffle)*split_ratio)
 
-    train_filename = image_filenames_shuffle[0:split]
-    train_label = image_label_shuffle[0:split]
-    test_filename = image_filenames_shuffle[split:]
-    test_label = image_label_shuffle[split:]
+def get_train_path_set(split_ratio=0.9, reload=False):
+    class_name, class_index = cfg.pickup_dic()
 
-    info = {
-        "train_filename": train_filename,
-        "train_label": train_label,
-        "train_size": len(train_filename),
-        "test_filename": test_filename,
-        "test_label": test_label,
-        "test_size": len(test_filename),
-    }
+    if reload is False and os.path.exists(cfg.IMAGENET_DATA_DIC):
+        pkl_file = open(cfg.IMAGENET_DATA_DIC, 'rb')
+        info = pickle.load(pkl_file)
+        pkl_file.close()
+
+    else:
+        image_filenames = []
+        image_label = []
+        for key, value in class_name.items():
+            imagedir = os.path.join(cfg.IMAGENET_TRAINIMAGE, key)
+            for parent, dirnames, filenames in os.walk(imagedir):
+                for filename in filenames:
+                    headname, expname = os.path.splitext(filename)
+                    expname = expname.lower()
+                    image_id = headname.split('_')[0]
+                    full_path = os.path.join(imagedir, filename)
+
+                    if expname == '.jpeg' and image_id == key:
+                        image_filenames.append(full_path)
+                        image_label.append(class_index[image_id])
+                        print(full_path, len(image_filenames), len(image_label))
+
+        roll_seed = random.randint(10, 100)
+        random.seed(roll_seed)
+        image_filenames_shuffle = copy.copy(image_filenames)
+        random.shuffle(image_filenames_shuffle)
+        random.seed(roll_seed)
+        image_label_shuffle = copy.copy(image_label)
+        random.shuffle(image_label_shuffle)
+
+        check_filename_class(class_index, image_filenames_shuffle, image_label_shuffle)
+
+        split = int(len(image_filenames_shuffle) * split_ratio)
+
+        train_filename = image_filenames_shuffle[0:split]
+        train_label = image_label_shuffle[0:split]
+        test_filename = image_filenames_shuffle[split:]
+        test_label = image_label_shuffle[split:]
+
+        info = {
+            "train_filename": train_filename,
+            "train_label": train_label,
+            "train_size": len(train_filename),
+            "test_filename": test_filename,
+            "test_label": test_label,
+            "test_size": len(test_filename),
+        }
+
+        output = open(cfg.IMAGENET_DATA_DIC, 'wb')
+        pickle.dump(info, output)
+        output.close()
+
+    check_filename_class(class_index, info["train_filename"], info["train_label"])
+    check_filename_class(class_index, info["test_filename"], info["test_label"])
+    class_stat(info["train_label"])
+    class_stat(info["test_label"])
 
     return info
 
 
 def main():
 
-    sess = tf.InteractiveSession()
     epoch_start = 1
-    learning_rate = 0.0001
+    learning_rate = 0.000001
     batch_size = 6
     num_parallel = batch_size*2
 
     is_training = tf.placeholder(tf.bool, name='is_training')
 
-    imagenet_dic = get_train_path_set()
-    # cons_filenames = tf.constant(imagenet_dic["train_filename"])
-    # cons_labels = tf.constant(imagenet_dic["train_label"])
+    imagenet_dic = get_train_path_set(reload=False)
 
     images_ph = tf.placeholder(tf.string, shape=[None], name='image_data')
     label_ph = tf.placeholder(tf.int32, shape=[None], name='imagenet_label')
@@ -109,17 +140,22 @@ def main():
     darknet19_output = yb.darnet19_body(dark19_core, is_train=is_training)
 
     ce = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=imagenet_label, logits=darknet19_output))
+    loss_l2 = ce + tf.losses.get_regularization_loss()
 
     correct_prediction = tf.equal(tf.cast(tf.argmax(darknet19_output, 1), tf.int32), imagenet_label)
     acc = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
 
     update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
     with tf.control_dependencies(update_ops):
-        train_darknet19_op = tf.train.AdamOptimizer(learning_rate).minimize(ce)
+        train_darknet19_op = tf.train.AdamOptimizer(learning_rate).minimize(loss_l2)
 
-    tf.global_variables_initializer().run()
+    tfconfig = tf.ConfigProto(allow_soft_placement=True)
+    # tfconfig.gpu_options.allow_growth = True
+    sess = tf.Session(config=tfconfig)
 
-    if cfg.RESUME_DARKNET19_TRAIN == True:
+    sess.run(tf.global_variables_initializer())
+
+    if cfg.RESUME_DARKNET19_TRAIN is True:
         print("restore darknet19 model " + "!"*10)
         saver = tf.train.Saver()
         model_file = tf.train.latest_checkpoint(cfg.DARKNET19_MODEL_SAVE_DIR)
@@ -131,7 +167,7 @@ def main():
 
     print('train start!!!!! epoch_start:', epoch_start, time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time())))
     # Compute for 100 epochs.
-    for epoch in range(epoch_start, 100):
+    for epoch in range(epoch_start, 200):
         sess.run(iterator.initializer, feed_dict={images_ph: imagenet_dic["train_filename"],
                                                   label_ph: imagenet_dic["train_label"]})
         count = 0
@@ -168,7 +204,7 @@ def main():
             except tf.errors.OutOfRangeError:
                 break
 
-        print(loss_all / count, acc_all / count)
+        print(loss_all / count, acc_all / count, count)
 
 
 main()

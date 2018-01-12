@@ -46,6 +46,7 @@ def restore_darknet19_core(sess):
 
     saver = tf.train.Saver(vars_to_restore)
     saver.restore(sess, model_file)
+    print(model_file)
 
 
 def image_trueboxs_to_corners(trueboxs):
@@ -107,12 +108,12 @@ def main():
 
     sess.run(tf.global_variables_initializer())
 
-    if cfg.RESUME_DARKNET19_CORE == True:
+    if cfg.RESUME_DARKNET19_CORE is True:
         print("restore darknet19_core!!!!")
         restore_darknet19_core(sess)
         # print(sess.run(dark19_core, feed_dict={images_ph: np.ones((1, 224, 224, 3)), is_training: False}))
 
-    if cfg.RESUME_YOLOV2_TRAIN == True and cfg.RESUME_DARKNET19_CORE != True:
+    if cfg.RESUME_YOLOV2_TRAIN is True and cfg.RESUME_DARKNET19_CORE is not True:
         print("restore yolov2 model " + "!"*10)
         saver = tf.train.Saver()
         model_file = tf.train.latest_checkpoint(cfg.YOLOV2_MODEL_SAVE_DIR)

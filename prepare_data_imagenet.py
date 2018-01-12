@@ -51,6 +51,8 @@ def train_data_make(class_name, class_index):
                     print(full_path, class_index[key], count)
                     img = cv2.imread(full_path)
                     img = cv2.resize(img, (cfg.IMAGENET_IMAGE_SIZE, cfg.IMAGENET_IMAGE_SIZE), interpolation=cv2.INTER_AREA)
+                    b, g, r = cv2.split(img)
+                    img = cv2.merge([r, g, b])
                     image_data.append(img)
                     label_data.append(class_index[key])
                     print(len(image_data))

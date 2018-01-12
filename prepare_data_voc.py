@@ -9,7 +9,7 @@ import numpy as np
 
 
 
-def data_convert(class_filter):
+def data_convert(class_filter, Ann_dir, image_dir):
     for parent, dirnames, filenames in os.walk(cfg.Annotations_dir):
         for filename in filenames:
             print("parent folder is:" + parent)
@@ -309,7 +309,9 @@ def data_make():
                     # print(best_box, obj_lab)
                     # print(image_label[box_cellpos[0], box_cellpos[1], best_box, 0])
 
-                image = np.array(cv2.imread(os.path.join(parent, jpeg_filename), cv2.IMREAD_COLOR))
+                b, g, r = cv2.split(cv2.imread(os.path.join(parent, jpeg_filename), cv2.IMREAD_COLOR))
+                img_rgb = cv2.merge([r, g, b])
+                image = np.array(img_rgb)
                 # print(image.shape)
                 image_data.append(image)
                 label_data.append(image_label)
@@ -323,7 +325,7 @@ def data_make():
 # idx_print_name(15443)
 # class_enmu()
 # exit(0)
-data_convert(cfg.CLASSES)
+# data_convert(cfg.CLASSES)
 # image_show()
 data_make()
 

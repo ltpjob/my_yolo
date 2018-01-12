@@ -14,7 +14,7 @@ def DarknetConv2D_BN_Leaky(input, filters, kernel_size, strides=(1, 1), conv_kr=
     return h_act
 
 
-def darknet19_core(input, reuse=None, is_train=True):
+def darknet19_core(input, reuse=tf.AUTO_REUSE, is_train=True):
     with tf.variable_scope("darknet19_core", reuse=reuse):
 
         l2_regular = tf.contrib.layers.l2_regularizer(scale=5e-4)
@@ -57,7 +57,7 @@ def darknet19_core(input, reuse=None, is_train=True):
         return layer_22, layer_16
 
 
-def darnet19_body(layer_22, reuse=None, is_train=True):
+def darnet19_body(layer_22, reuse=tf.AUTO_REUSE, is_train=True):
     with tf.variable_scope("darknet19_body", reuse=reuse):
 
         l2_regular = tf.contrib.layers.l2_regularizer(scale=5e-4)
@@ -66,13 +66,13 @@ def darnet19_body(layer_22, reuse=None, is_train=True):
                                                strides=(1, 1), conv_kr=l2_regular, is_train=is_train)
         avg_k_size = cfg.IMAGENET_AVGPOOLSIZE
         avg_pool = tf.layers.average_pooling2d(darknet19_cls, pool_size=(avg_k_size, avg_k_size),
-                                                strides=(avg_k_size, avg_k_size), padding='same')
+                                               strides=(avg_k_size, avg_k_size), padding='same')
         logits = tf.reshape(avg_pool, shape=(-1, cfg.IMAGENET_CLASSCOUNT))
 
         return logits
 
 
-def yolov2_body(layer_22, layer_16, reuse=None, is_train=True):
+def yolov2_body(layer_22, layer_16, reuse=tf.AUTO_REUSE, is_train=True):
     with tf.variable_scope("yolov2_body", reuse=reuse):
 
         l2_regular = tf.contrib.layers.l2_regularizer(scale=5e-4)
